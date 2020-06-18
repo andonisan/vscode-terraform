@@ -11,12 +11,42 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 const vscode = require("vscode");
 const cp = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
 const os = require("os");
 const semver = require("semver");
 const yauzl = require("yauzl");
 const releasesUrl = "https://releases.hashicorp.com/terraform-ls";
+const hashiPublicKey = `-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: GnuPG v1
+mQENBFMORM0BCADBRyKO1MhCirazOSVwcfTr1xUxjPvfxD3hjUwHtjsOy/bT6p9f
+W2mRPfwnq2JB5As+paL3UGDsSRDnK9KAxQb0NNF4+eVhr/EJ18s3wwXXDMjpIifq
+fIm2WyH3G+aRLTLPIpscUNKDyxFOUbsmgXAmJ46Re1fn8uKxKRHbfa39aeuEYWFA
+3drdL1WoUngvED7f+RnKBK2G6ZEpO+LDovQk19xGjiMTtPJrjMjZJ3QXqPvx5wca
+KSZLr4lMTuoTI/ZXyZy5bD4tShiZz6KcyX27cD70q2iRcEZ0poLKHyEIDAi3TM5k
+SwbbWBFd5RNPOR0qzrb/0p9ksKK48IIfH2FvABEBAAG0K0hhc2hpQ29ycCBTZWN1
+cml0eSA8c2VjdXJpdHlAaGFzaGljb3JwLmNvbT6JATgEEwECACIFAlMORM0CGwMG
+CwkIBwMCBhUIAgkKCwQWAgMBAh4BAheAAAoJEFGFLYc0j/xMyWIIAIPhcVqiQ59n
+Jc07gjUX0SWBJAxEG1lKxfzS4Xp+57h2xxTpdotGQ1fZwsihaIqow337YHQI3q0i
+SqV534Ms+j/tU7X8sq11xFJIeEVG8PASRCwmryUwghFKPlHETQ8jJ+Y8+1asRydi
+psP3B/5Mjhqv/uOK+Vy3zAyIpyDOMtIpOVfjSpCplVRdtSTFWBu9Em7j5I2HMn1w
+sJZnJgXKpybpibGiiTtmnFLOwibmprSu04rsnP4ncdC2XRD4wIjoyA+4PKgX3sCO
+klEzKryWYBmLkJOMDdo52LttP3279s7XrkLEE7ia0fXa2c12EQ0f0DQ1tGUvyVEW
+WmJVccm5bq25AQ0EUw5EzQEIANaPUY04/g7AmYkOMjaCZ6iTp9hB5Rsj/4ee/ln9
+wArzRO9+3eejLWh53FoN1rO+su7tiXJA5YAzVy6tuolrqjM8DBztPxdLBbEi4V+j
+2tK0dATdBQBHEh3OJApO2UBtcjaZBT31zrG9K55D+CrcgIVEHAKY8Cb4kLBkb5wM
+skn+DrASKU0BNIV1qRsxfiUdQHZfSqtp004nrql1lbFMLFEuiY8FZrkkQ9qduixo
+mTT6f34/oiY+Jam3zCK7RDN/OjuWheIPGj/Qbx9JuNiwgX6yRj7OE1tjUx6d8g9y
+0H1fmLJbb3WZZbuuGFnK6qrE3bGeY8+AWaJAZ37wpWh1p0cAEQEAAYkBHwQYAQIA
+CQUCUw5EzQIbDAAKCRBRhS2HNI/8TJntCAClU7TOO/X053eKF1jqNW4A1qpxctVc
+z8eTcY8Om5O4f6a/rfxfNFKn9Qyja/OG1xWNobETy7MiMXYjaa8uUx5iFy6kMVaP
+0BXJ59NLZjMARGw6lVTYDTIvzqqqwLxgliSDfSnqUhubGwvykANPO+93BBx89MRG
+unNoYGXtPlhNFrAsB1VR8+EyKLv2HQtGCPSFBhrjuzH3gxGibNDDdFQLxxuJWepJ
+EK1UbTS4ms0NgZ2Uknqn1WRU1Ki7rE4sTy68iZtWpKQXZEJa0IGnuI2sSINGcXCJ
+oEIgXTMyCILo34Fa/C6VCm2WBgz9zZO8/rHIiQm1J5zqz0DrDwKBUM9C
+=LYpS
+-----END PGP PUBLIC KEY BLOCK-----`;
 class LanguageServerInstaller {
     install(directory) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -84,8 +114,8 @@ class LanguageServerInstaller {
                     return reject(response.statusMessage);
                 }
                 let releaseData = "";
-                response.on('data', (chunk) => {
-                    releaseData += chunk;
+                response.on('data', (data) => {
+                    releaseData += data;
                 });
                 response.on('end', () => {
                     try {
@@ -102,32 +132,32 @@ class LanguageServerInstaller {
             request.end();
         });
     }
-    installPkg(installDir, release, identifer, downloadUrl) {
+    installPkg(installDir, release, identifer) {
+        const destination = `${installDir}/terraform-ls_v${release.version}.zip`;
         let platform = os.platform().toString();
+        if (platform === 'win32') {
+            platform = 'windows';
+        }
+        let arch = os.arch();
+        switch (arch) {
+            case 'x64':
+                arch = 'amd64';
+                break;
+            case 'x32':
+                arch = '386';
+                break;
+        }
+        const build = release.builds.find(b => b.os === platform && b.arch === arch);
+        const downloadUrl = build.url;
         if (!downloadUrl) {
-            let arch = os.arch();
-            switch (arch) {
-                case 'x64':
-                    arch = 'amd64';
-                    break;
-                case 'x32':
-                    arch = '386';
-                    break;
-            }
-            if (platform === 'win32') {
-                platform = 'windows';
-            }
-            downloadUrl = release.builds.find(b => b.os === platform && b.arch === arch).url;
-            if (!downloadUrl) {
-                // No matching build found
-                return Promise.reject();
-            }
-            try {
-                this.removeOldBin(installDir, platform);
-            }
-            catch (_a) {
-                // ignore
-            }
+            // No matching build found
+            return Promise.reject();
+        }
+        try {
+            this.removeOldBin(installDir, platform);
+        }
+        catch (_a) {
+            // ignore
         }
         return new Promise((resolve, reject) => {
             vscode.window.withProgress({
@@ -138,12 +168,13 @@ class LanguageServerInstaller {
                 token.onCancellationRequested(() => {
                     return reject();
                 });
-                progress.report({ increment: 10 });
+                progress.report({ increment: 30 });
                 return new Promise((resolve, reject) => {
-                    this.download(downloadUrl, `${installDir}/terraform-ls_v${release.version}.zip`, identifer).then((pkgName) => {
+                    this.download(downloadUrl, destination, identifer).then(() => {
                         progress.report({ increment: 30 });
-                        this.unpack(installDir, pkgName).then(() => {
-                            return resolve();
+                        this.verify(release, destination, build.filename).then(() => {
+                            progress.report({ increment: 30 });
+                            return this.unpack(installDir, destination);
                         }).catch((err) => {
                             return reject(err);
                         });
@@ -151,8 +182,12 @@ class LanguageServerInstaller {
                 }).then(() => {
                     return resolve();
                 }, (err) => {
-                    this.removeOldBin(installDir, platform);
-                    return reject(err);
+                    try {
+                        fs.unlinkSync(destination);
+                    }
+                    finally {
+                        return reject(err);
+                    }
                 });
             });
         });
@@ -180,7 +215,7 @@ class LanguageServerInstaller {
                 response.pipe(pkg);
                 response.on('end', () => {
                     try {
-                        return resolve(installPath);
+                        return resolve();
                     }
                     catch (err) {
                         return reject(err);
@@ -189,6 +224,41 @@ class LanguageServerInstaller {
             });
             request.on('error', (error) => { return reject(error); });
             request.end();
+        });
+    }
+    verify(release, pkg, buildName) {
+        return new Promise((resolve, reject) => {
+            const hash = crypto.createHash('sha256');
+            const pkgStream = fs.createReadStream(pkg);
+            const sumFile = release.shasums;
+            pkgStream.on('data', (data) => {
+                hash.update(data);
+            });
+            const digest = hash.digest('hex');
+            let shasum;
+            let shasumResponse = "";
+            https.get(`${releasesUrl}/${release.version}/${sumFile}`, (response) => {
+                response.on('data', (data) => {
+                    shasumResponse += data;
+                });
+                response.on('end', () => {
+                    const shasumLine = shasumResponse.split(`\n`).find(line => line.includes(buildName));
+                    if (!shasumLine) {
+                        return reject(`Install error: no matching SHA sum for ${buildName}`);
+                    }
+                    shasum = shasumLine.split(" ")[0];
+                    if (digest !== shasum) {
+                        console.log(digest);
+                        console.log(shasum);
+                        return reject(`Install error: SHA sum for ${buildName} does not match`);
+                    }
+                    else {
+                        return resolve();
+                    }
+                });
+            }).on('error', (err) => {
+                return reject(err);
+            });
         });
     }
     unpack(directory, pkgName) {
